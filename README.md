@@ -1,5 +1,11 @@
 # PHP Ares API
 
+## Install
+
+```
+composer require milankyncl/ares-api dev-master
+```
+
 ## How to use ?
 
 ```php
