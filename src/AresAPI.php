@@ -10,9 +10,28 @@ namespace MilanKyncl;
 
 class AresAPI {
 
-	const BACKEND_URL = 'https://wwwinfo.ares.cz';
+	const BACKEND_URL = 'http://wwwinfo.mfcr.cz/cgi-bin/ares';
 
-	public function findByName() {
+	public function findByName($name) {
+
+		$xml = $this->_createRequest(self::BACKEND_URL . '/ares_es.cgi?obch_jm=' . urlencode($name));
+
+		$ns = $xml->getDocNamespaces();
+		$data = $xml->children($ns['are']);
+		$subjects = $data->children($ns['dtt'])->V->S;
+
+		$result = [];
+
+		foreach($subjects as $subject) {
+
+			$result[] = [
+				'in' => $subject->ico, // Identifikační číslo
+				'name' => $subject->ojm, // Jméno subjektu
+				'address' => $subject->jmn // Adresa
+			];
+		}
+
+		return $result;
 
 	}
 
@@ -22,14 +41,14 @@ class AresAPI {
 	 *
 	 * Create API request, parse XML feed and return array.
 	 *
-	 * @return array
+	 * @return \SimpleXMLElement
 	 *
 	 * @throws \Exception
 	 */
 
-	private function _createRequest($parameters) {
+	private function _createRequest($url) {
 
-		$curl = curl_init(self::BACKEND_URL);
+		$curl = curl_init($url);
 
 		curl_setopt_array($curl, [
 			CURLOPT_RETURNTRANSFER => 1,
@@ -42,12 +61,16 @@ class AresAPI {
 			throw new \Exception(curl_error($curl), curl_errno($curl));
 
 		curl_close($curl);
-
 		/**
 		 * Parse XML now
 		 */
 
-		return $content;
+		$xml = simplexml_load_string($content);
+
+		if($xml)
+			return $xml;
+
+		return false;
 
 	}
 
