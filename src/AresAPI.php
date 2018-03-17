@@ -1,6 +1,7 @@
 <?php
 
 namespace MilanKyncl;
+use Phalcon\Mvc\Model\Resultset\Simple;
 
 /**
  * Class AresAPI
@@ -11,6 +12,53 @@ namespace MilanKyncl;
 class AresAPI {
 
 	const BACKEND_URL = 'http://wwwinfo.mfcr.cz/cgi-bin/ares';
+
+	/**
+	 * findByIN
+	 * --------
+	 *
+	 * Find subjects by it's name.
+	 *
+	 * @param $in
+	 *
+	 * @return array|bool
+	 * @throws \Exception
+	 */
+
+	public function findByIN($in) {
+
+		$xml = $this->_createRequest('http://wwwinfo.mfcr.cz/cgi-bin/ares/darv_bas.cgi?ico=' . $in);
+
+		$ns = $xml->getDocNamespaces();
+		$data = $xml->children($ns['are']);
+		$el = $data->children($ns['D'])->VBAS;
+
+		if (strval($el->ICO) == $in) {
+
+			return [
+				'in' => (string) $el->ICO,
+				'tin' => (string) $el->DIC,
+				'name' => (string) $el->OF,
+				'street' => (string) $el->AA->NU . ' ' . (($el->AA->CO == '') ? $el->AA->CD : $el->AA->CD . '/' . $el->AA->CO),
+				'city' => (string) $el->AA->N,
+				'zip' => (string) $el->AA->PSC
+			];
+		}
+
+		return false;
+	}
+
+	/**
+	 * findByName
+	 * ----------
+	 *
+	 * Find subjects by it's name.
+	 *
+	 * @param $name
+	 *
+	 * @return array
+	 * @throws \Exception
+	 */
 
 	public function findByName($name) {
 
@@ -25,9 +73,9 @@ class AresAPI {
 		foreach($subjects as $subject) {
 
 			$result[] = [
-				'in' => $subject->ico, // Identifikační číslo
-				'name' => $subject->ojm, // Jméno subjektu
-				'address' => $subject->jmn // Adresa
+				'in' => (string) $subject->ico, // Identifikační číslo
+				'name' => (string) $subject->ojm, // Jméno subjektu
+				'address' => (string) $subject->jmn // Adresa
 			];
 		}
 
@@ -36,12 +84,12 @@ class AresAPI {
 	}
 
 	/**
-	 * Create API Request
-	 * ------------------
+	 * _createRequest
+	 * --------------
 	 *
 	 * Create API request, parse XML feed and return array.
 	 *
-	 * @return \SimpleXMLElement
+	 * @return \SimpleXMLElement|false
 	 *
 	 * @throws \Exception
 	 */
