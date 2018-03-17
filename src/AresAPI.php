@@ -1,7 +1,6 @@
 <?php
 
 namespace MilanKyncl;
-use Phalcon\Mvc\Model\Resultset\Simple;
 
 /**
  * Class AresAPI
