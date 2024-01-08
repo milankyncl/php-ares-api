@@ -10,7 +10,7 @@ namespace MilanKyncl;
 
 class AresAPI {
 
-	const BACKEND_URL = 'http://wwwinfo.mfcr.cz/cgi-bin/ares';
+	const BACKEND_URL = 'https://ares.gov.cz/ekonomicke-subjekty-v-be/rest';
 
 	/**
 	 * findByIN
@@ -26,25 +26,40 @@ class AresAPI {
 
 	public function findByIN($in) {
 
-		$xml = $this->_createRequest('http://wwwinfo.mfcr.cz/cgi-bin/ares/darv_bas.cgi?ico=' . $in);
+		$response = $this->_createRequest(self::BACKEND_URL . '/ekonomicke-subjekty/vyhledat', ['ico' => [$in]]);
 
-		$ns = $xml->getDocNamespaces();
-		$data = $xml->children($ns['are']);
-		$el = $data->children($ns['D'])->VBAS;
+		if(
+			$response['pocetCelkem'] < 1
+			|| empty($response['ekonomickeSubjekty'][0])
+			|| $response['ekonomickeSubjekty'][0]['ico'] != $in
+		)
+			return false;
 
-		if (strval($el->ICO) == $in) {
+		$subject = $response['ekonomickeSubjekty'][0];
 
-			return [
-				'in' => (string) $el->ICO,
-				'tin' => (string) $el->DIC,
-				'name' => (string) $el->OF,
-				'street' => (string) $el->AA->NU . ' ' . (($el->AA->CO == '') ? $el->AA->CD : $el->AA->CD . '/' . $el->AA->CO),
-				'city' => (string) $el->AA->N,
-				'zip' => (string) $el->AA->PSC
-			];
-		}
+		return [
+			'in' => $subject['ico'] ?? null,
+			'tin' => $subject['dic'] ?? null,
+			'name' => $subject['obchodniJmeno'] ?? null,
+			'street' => trim(
+				($subject['sidlo']['nazevUlice'] ?? ($subject['sidlo']['nazevCastiObce'] ?? ''))
+				. ' '
+				. (
+					empty($subject['sidlo']['cisloOrientacni'])
+					? ($subject['sidlo']['cisloDomovni'] ?? '')
+					: (
+						(
+							isset($subject['sidlo']['cisloDomovni'])
+							? $subject['sidlo']['cisloDomovni'] . '/'
+							: '')
+						. $subject['sidlo']['cisloOrientacni']
+					)
+				)
+			),
+			'city' => $subject['sidlo']['nazevObce'] ?? null,
+			'zip' => $subject['sidlo']['psc'] ?? null
+		];
 
-		return false;
 	}
 
 	/**
@@ -61,20 +76,24 @@ class AresAPI {
 
 	public function findByName($name) {
 
-		$xml = $this->_createRequest(self::BACKEND_URL . '/ares_es.cgi?obch_jm=' . urlencode($name));
-
-		$ns = $xml->getDocNamespaces();
-		$data = $xml->children($ns['are']);
-		$subjects = $data->children($ns['dtt'])->V->S;
+		$response = $this->_createRequest(self::BACKEND_URL . '/ekonomicke-subjekty/vyhledat', ['obchodniJmeno' => $name]);
 
 		$result = [];
 
-		foreach($subjects as $subject) {
+		if(
+			$response['pocetCelkem'] < 1
+			|| empty($response['ekonomickeSubjekty'])
+		)
+			return $result;
+
+		$result = [];
+
+		foreach($response['ekonomickeSubjekty'] as $subject) {
 
 			$result[] = [
-				'in' => (string) $subject->ico, // Identifikační číslo
-				'name' => (string) $subject->ojm, // Jméno subjektu
-				'address' => (string) $subject->jmn // Adresa
+				'in' => $subject['ico'] ?? null, // Identifikační číslo
+				'name' => $subject['obchodniJmeno'] ?? null, // Jméno subjektu
+				'address' => $subject['sidlo']['textovaAdresa'] ?? null // Adresa
 			];
 		}
 
@@ -86,36 +105,48 @@ class AresAPI {
 	 * _createRequest
 	 * --------------
 	 *
-	 * Create API request, parse XML feed and return array.
+	 * Create API request, parse JSON and return array.
 	 *
-	 * @return \SimpleXMLElement|false
+	 * @return array|false
 	 *
 	 * @throws \Exception
 	 */
 
-	private function _createRequest($url) {
+	private function _createRequest($url, $data) {
 
 		$curl = curl_init($url);
 
 		curl_setopt_array($curl, [
-			CURLOPT_RETURNTRANSFER => 1,
-			CURLOPT_SSL_VERIFYPEER => 0
+			CURLOPT_HEADER => false,
+			CURLOPT_RETURNTRANSFER => true,
+			CURLOPT_HTTPHEADER => [
+				"Content-type: application/json"
+			],
+			CURLOPT_POST => true,
+			CURLOPT_POSTFIELDS => json_encode($data),
+			CURLOPT_SSL_VERIFYPEER => false // TODO
 		]);
 
 		$content = curl_exec($curl);
 
-		if (!$content)
+		$status = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+
+		if($status != 200)
+			throw new \Exception('Error: call to URL ' . $url . ' failed with status ' . $status . ', response ' . $content . ', curl_error ' . curl_error($curl) . ', curl_errno ' . curl_errno($curl));
+
+		if(!$content)
 			throw new \Exception(curl_error($curl), curl_errno($curl));
 
 		curl_close($curl);
+
 		/**
-		 * Parse XML now
+		 * Parse JSON now
 		 */
 
-		$xml = simplexml_load_string($content);
+		$json = json_decode($content, true);
 
-		if($xml)
-			return $xml;
+		if(!empty($json))
+			return $json;
 
 		return false;
 
